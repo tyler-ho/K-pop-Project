@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s — %(levelname)s — %(message)s",
     handlers=[
-        logging.FileHandler("/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/logs/process_librosa.log"),
+        logging.FileHandler("logs/process_librosa.log"),
         logging.StreamHandler()
     ]
 )
@@ -46,7 +46,6 @@ def process_sound(song: Song, save_path, n_mfcc = 13):
         # print(f"Contrast Shape: {contrast.shape}")
         
         np.save(save_path, mfccs)
-        song.mfccs_path
         logging.info(f"Processed and saved MFCCs for {song.path} -> {save_path}")
 
 
