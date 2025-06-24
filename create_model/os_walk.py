@@ -1,8 +1,7 @@
 import os
 from pathlib import Path
 from song import Song
-
-# root_dir = '/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/audio_output_viachannel'
+import pickle
 
 def createSongsFromDir(root_dir):
     full_paths = []
@@ -19,4 +18,9 @@ def createSongsFromDir(root_dir):
         p = Path(full_path)
         Songs.append(Song(full_path, p.parts[-4], p.parts[-3], p.parts[-2], p.parts[-1]))
 
-    return Songs
+    with open("create_model/Songs.pkl", "wb") as f:
+        pickle.dump(Songs, f)
+
+if __name__ == "__main__":
+    root_dir = '/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/audio_output_viachannel'
+    createSongsFromDir(root_dir=root_dir)
