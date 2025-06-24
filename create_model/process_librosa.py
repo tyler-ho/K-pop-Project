@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from song import Song
 from typing import List
 import logging
+import pickle
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,7 @@ def process_sound(song: Song, save_path, n_mfcc = 13):
         # print(f"Contrast Shape: {contrast.shape}")
         
         np.save(save_path, mfccs)
+        song.mfccs_path
         logging.info(f"Processed and saved MFCCs for {song.path} -> {save_path}")
 
 
@@ -58,17 +60,22 @@ def process_sound(song: Song, save_path, n_mfcc = 13):
         logging.error(f"Error processing {song.path}: {e}")
 
 def process_directory(Songs: List[Song], out_folder):
-    results = {}
+    # results = {}
     for song in Songs:
-        features = process_sound(song, os.path.join(out_folder, song.artist + " - " + song.name + ".npy"))
-        results[song.path] = features
-    return results
+        save_path = os.path.join(out_folder, song.artist + " - " + song.name + ".npy")
+        process_sound(song=song, save_path=save_path)
+        song.mfccs_path = save_path
+        with open("create_model/Songs.pkl", 'wb') as f:
+            pickle.dump(Songs, f)
+        # results[song.path] = features
+    # return results
 
 # Example usage
 if __name__ == "__main__":
     from os_walk import createSongsFromDir
     directory_path = '/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/audio_output_viachannel'
     out_folder = "/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/song_mfccs"
-    Songs = createSongsFromDir(directory_path)
-    features_data = process_directory(Songs, out_folder)
-    print(features_data)
+    with open("create_model/Songs.pkl", 'rb') as f:
+        Songs = pickle.load(f)
+        features_data = process_directory(Songs, out_folder)
+        print(features_data)
