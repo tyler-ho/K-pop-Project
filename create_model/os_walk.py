@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from song import Song
 import pickle
+import unicodedata
 
 def createSongsFromDir(root_dir):
     full_paths = []
@@ -10,7 +11,7 @@ def createSongsFromDir(root_dir):
         filenames[:] = [f for f in filenames if f != '.DS_Store']
         for filename in filenames:
             full_path = os.path.join(dirpath, filename)
-            full_paths.append(full_path)
+            full_paths.append(unicodedata.normalize('NFC', full_path))
 
     Songs = []
 
