@@ -23,5 +23,5 @@ def createSongsFromDir(root_dir):
         pickle.dump(Songs, f)
 
 if __name__ == "__main__":
-    root_dir = '/home/tyler/gdrive/K-pop Project 2024-5/K-pop Project/audio_output_viachannel'
+    root_dir = '/home/tyler/gdrive/K-pop Project 2024-5/K-pop Project/music_files'
     createSongsFromDir(root_dir=root_dir)
