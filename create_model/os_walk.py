@@ -19,10 +19,11 @@ def createSongsFromDir(root_dir):
         p = Path(full_path)
         Songs.append(Song(full_path, p.parts[-4], p.parts[-3], p.parts[-2], p.parts[-1]))
 
-    with open("create_model/Songs.pkl", "wb") as f:
+    with open("create_model/farmshare_Songs.pkl", "wb") as f:
         pickle.dump(Songs, f)
 
 if __name__ == "__main__":
-    root_dir = '/home/tyler/gdrive/K-pop Project 2024-5/K-pop Project/music_files'
+    # root_dir = '/home/tyler/gdrive/K-pop Project 2024-5/K-pop Project/music_files'
     # root_dir = '/home/tyler/Downloads/kpop_project/music_files'
+    root_dir = '/home/users/tylerho/kpop_project/K-pop-Project/music_files'
     createSongsFromDir(root_dir=root_dir)
