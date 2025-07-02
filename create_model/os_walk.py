@@ -11,7 +11,8 @@ def createSongsFromDir(root_dir):
         filenames[:] = [f for f in filenames if f != '.DS_Store' and f != 'desktop.ini']
         for filename in filenames:
             full_path = os.path.join(dirpath, filename)
-            full_paths.append(unicodedata.normalize('NFC', full_path))
+            # full_paths.append(unicodedata.normalize('NFC', full_path))
+            full_paths.append(full_path) # farmshare's linux hates unicode normalization
 
     Songs = []
 
