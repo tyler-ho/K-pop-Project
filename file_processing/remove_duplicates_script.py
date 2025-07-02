@@ -4,13 +4,24 @@
 import torch, torchaudio, faiss
 import os
 import pickle
+import logging
 import pandas as pd
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# need logging to see the progress 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s — %(levelname)s — %(message)s",
+    handlers=[
+        logging.FileHandler("/home/users/tylerho/kpop_project/K-pop-Project/logs/remove_duplicates.log"),
+        logging.StreamHandler()
+    ]
+)
+
 # Check if GPU is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device: {device}")
+logging.info(f"Using device: {device}")
 
 # Load pretrained Wav2Vec2 model on GPU
 bundle = torchaudio.pipelines.WAV2VEC2_BASE
@@ -42,11 +53,13 @@ def extract_embedding(waveform):
 
 def process_file(path):
     try:
+        logging.info(f"Loading and preprocessing the song at {path}.")
         waveform = load_and_preprocess(path)
+        logging.info(f"Extracting embedding for the song at {path}.")
         embedding = extract_embedding(waveform)
         return path, embedding
     except Exception as e:
-        print(f"Failed processing {path}: {e}")
+        logging.info(f"Failed processing {path}: {e}")
         return path, None
     
 # Parallel embedding extraction with ThreadPoolExecutor
@@ -94,7 +107,7 @@ def remove_duplicates(embeddings, filepaths, threshold=0.8):
     return filtered_embeds, filtered_files, to_remove
 
 if __name__ == '__main__':
-    with open('create_model/farmshare_Songs.pkl', 'rb') as f:
+    with open('/home/users/tylerho/kpop_project/K-pop-Project/create_model/farmshare_Songs.pkl', 'rb') as f:
         Songs = pickle.load(f)
     data = [vars(song) for song in Songs]
     df = pd.DataFrame(data)
@@ -114,6 +127,8 @@ if __name__ == '__main__':
     print(f"Duplicates removed: {len(duplicates)}")
     print(f"Unique songs remaining: {len(filtered_files)}")
 
+    with open('pickled_dupe_info/embeddings.pkl', 'wb') as f:
+        pickle.dump(embeddings, f)
     with open('pickled_dupe_info/original_files.pkl', 'wb') as f:
         pickle.dump(filepaths, f)
     with open('pickled_dupe_info/valid_paths.pkl', 'wb') as f:
