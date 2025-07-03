@@ -74,7 +74,7 @@ def download_track(track_url, output_dir="downloads"):
             ydl.download([track_url])
         return True
     except Exception as e:
-        logging.info(f"Error downloading {track_url}: {e}")
+        logging.warning(f"Error downloading {track_url}: {e}")
         return False
 
 def download_from_youtube_music(url, output_dir="downloads"):
@@ -83,7 +83,7 @@ def download_from_youtube_music(url, output_dir="downloads"):
         os.makedirs(output_dir)
     
     if not is_youtube_music_url(url):
-        logging.info("Not a YouTube Music URL")
+        logging.warning("Not a YouTube Music URL")
         return
     
     parsed_url = urlparse(url)
@@ -99,7 +99,7 @@ def download_from_youtube_music(url, output_dir="downloads"):
             download_track(song_url, output_dir)
 
     else:
-        logging.info(f"Unsupported URL type: {url}")
+        logging.warning(f"Unsupported URL type: {url}")
 
 # Example usage
 if __name__ == "__main__":
