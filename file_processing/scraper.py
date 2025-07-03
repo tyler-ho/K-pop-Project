@@ -20,12 +20,15 @@ def is_youtube_music_url(url):
     parsed_url = urlparse(url)
     return parsed_url.netloc in ['music.youtube.com', 'www.music.youtube.com']
 
+
+COOKIE_FILE = 'cookies.txt'
 def get_playlist_from_artist(artist_url):
     """Extract playlist URLs from an artist page"""
     ydl_opts = {
         'extract_flat': True,
         'skip_download': True,
-        'quiet': True
+        'quiet': True,
+        'cookiefile': COOKIE_FILE
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -39,12 +42,12 @@ def get_playlist_from_artist(artist_url):
         
         return playlists
 
-BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'version'] # remove any concert recordings, instrumentals, copied songs in other languages, and remixes
+BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'karaoke', 'version']  # remove any concert recordings, instrumentals, copied songs in other languages, and remixes
 def has_banned_words(title: str, banned_words: List[str]=BANNED_WORDS):
     for banned_word in banned_words:
         if banned_word in title.lower():
-            return True
-    return False
+            return True, banned_word
+    return False, None
 
 
 def download_track(track_url, output_dir="downloads"):
@@ -61,14 +64,16 @@ def download_track(track_url, output_dir="downloads"):
         'quiet': False,
         'keepvideo': False,
         'download_archive': 'logs/downloaded_videos.txt',
-        'no_overwrites': True
+        'no_overwrites': True,
+        'cookiefile' : COOKIE_FILE
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             title = ydl.extract_info(track_url, download=False).get('title')
-            if has_banned_words(title):
-                logging.info(f'Skipped {title}.')
+            has_banned_word, banned_word = has_banned_words(title)
+            if has_banned_word:
+                logging.info(f'Skipped {title}. Contains banned word: {banned_word}.')
                 return True
             logging.info(f"Downloading {title}.")
             ydl.download([track_url])
@@ -103,10 +108,12 @@ def download_from_youtube_music(url, output_dir="downloads"):
 
 # Example usage
 if __name__ == "__main__":
-    BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'version'] 
+    from time import sleep
+    # BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'karaoke', 'version'] 
     data_path = 'file_processing/DownloadViaChannel.xlsx'
     df = pd.read_excel(data_path)
     for row in df.itertuples():
+        sleep(1)
         download_from_youtube_music(row.group_link, "music_downloads/" + row.company + '/' + str(row.generation) + '/' + row.group)
 
 
