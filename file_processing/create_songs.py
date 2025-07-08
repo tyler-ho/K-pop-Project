@@ -99,5 +99,5 @@ if __name__ == '__main__':
         songs.extend(create_songs_from_channel(row.group_link,
             row.company, row.debut_year,
             debut_to_generation(row.debut_year), row.group))
-    with open('machine_data/pickled_songs_sherlock.pkl', 'wb') as f:
-        pickle.dump(songs, f)
+        with open('machine_data/pickled_songs_sherlock.pkl', 'wb') as f:
+            pickle.dump(songs, f)
