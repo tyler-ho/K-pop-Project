@@ -55,7 +55,7 @@ def create_song(company: str, debut_year: int, generation: int, artist: str, tit
     if os.path.exists(file_path):
         logging.info(f'Creating the Song object for {artist} - {title}.')
         return Song(path=file_path, company=company, debut_year=debut_year,
-                artist = artist, song_name=title, release_date=release_date)
+                artist=artist, song_name=title, release_date=release_date)
 
 def create_songs_from_channel(url, company, debut_year, generation,
         artist):
