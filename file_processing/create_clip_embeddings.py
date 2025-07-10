@@ -1,13 +1,22 @@
 import os
 import pickle
+import demucs.pretrained
+import demucs.separate
 import librosa
 import logging
+import torch
+import torchaudio
 import numpy as np
 import pandas as pd
+import demucs.separate
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
 from scipy.io import wavfile
 from song import Song
+
+STEMS = ['vocals', 'no_vocals']
+EXTENSIONS = [f'_{STEM}.wav' for STEM in STEMS]
+
 
 logging.basicConfig(
         level=logging.INFO,
@@ -18,9 +27,20 @@ logging.basicConfig(
         ]
     )
 
+def set_device():
+    if torch.cuda.is_available():
+        return 'cuda'
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
 
-def separate_track(input_file, output_dir='stem_temp',
-        model_name='htmdemucs_2s'):
+def get_base_filename(input_file):
+    input_file = os.path.abspath(input_file)
+    base_filename = os.path.splitext(os.path.basename(input_file))[0]
+    return base_filename
+    
+
+def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name='htdemucs'):
     input_file = os.path.abspath(input_file)
     if not os.path.exists(input_file):
         raise FileNotFoundError(f'Audio file not found: {input_file}.')
@@ -41,47 +61,41 @@ def separate_track(input_file, output_dir='stem_temp',
         audio_data = audio_data[:2]
 
     wav = torch.tensor(audio_data, dtype=torch.float32)
-    logging.info(f'Audio loaded successfully. Shape: {wave.shape}, Sample rate:
-    {sr}')
-
-    if torch.cuda.is_available():
-        device = 'cuda'
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = 'mps'
-    else:
-        device = 'cpu'
+    logging.info(f'Audio loaded successfully. Shape: {wav.shape}, Sample rate: {sr}')
 
     logging.info(f'Using device: {device}')
     model = get_model(model_name)
     model.to(device)
 
-#   if sr != model.samplerate:
-#       logging.infor(f'Resampling from {sr}Hz to {model.samplerate}Hz')
-#       import torchaudio.functional as F
-#       wav = F.resample(wav, orig_freq=sr, new_freq=model.samplerate)
+    if sr != model.samplerate:
+        logging.info(f'Resampling from {sr}Hz to {model.samplerate}Hz')
+        import torchaudio.functional as F
+        wav = F.resample(wav, orig_freq=sr, new_freq=model.samplerate)
 
     wav = wav.unsqueeze(0)
     wav = wav.to(device)
 
     logging.info('Separating sources...')
     with torch.no_grad():
-        sources.apply_model(model, wav)
+        sources = apply_model(model, wav)
 
     sources = sources.squeeze(0)
-#   logging.info('Saving separated sources...')
-#   for i, source_name in enumerate(model.sources):
-#           source_audio = sources[i]
-#           output_path = os.path.join(output_dir,
-#               f'{base_filename}_{source_name}.wav')
-#           audio_numpy = source_audio.cpu().numpy()
-#           audio_numpy = audio_numpy.T
-#           logging.info(f'Saving {source_name} to {output_path}.')
-#           wavfile.write(output_path, model.samplerate,
-#               audio_numpy.astype(np.float32)
-    logging.info(f'Separation complete! Files saved to {output_dir}')
-    return model.sources
+    logging.info('Saving separated sources...')
+    vocals_no_vocals = [sources[3], sources[0] + sources[1] + sources [2]]
 
-def create_clips(y, sr, clip_duration=30, overlap=0):
+    for i, source_name in enumerate(STEMS):
+            source_audio = vocals_no_vocals[i]
+            output_path = os.path.join(output_dir,
+                f'{base_filename}_{source_name}.wav')
+            audio_numpy = source_audio.cpu().numpy()
+            audio_numpy = audio_numpy.T
+            logging.info(f'Saving {source_name} to {output_path}.')
+            wavfile.write(output_path, model.samplerate, 
+                          audio_numpy.astype(np.float32))
+    logging.info(f'Separation complete! Files saved to {output_dir}')
+    return
+
+def create_clips(y, sr=44100, clip_duration=30, overlap=0):
     clip_length = clip_duration * sr
     hop_length = int(clip_length * (1 - (float(overlap) / clip_duration)))
     end_spot = int(len(y) - clip_length + 1)
@@ -90,7 +104,7 @@ def create_clips(y, sr, clip_duration=30, overlap=0):
         clips.append(y[start_sample:start_sample + clip_length])
     return clips
 
-def process_librosa(audio, sr):
+def process_librosa(audio, sr=44100):
     chroma_stft = librosa.feature.chroma_stft(y=audio, sr=sr)
     chroma_stft_mean = np.mean(chroma_stft.T, axis=0)
 
@@ -100,7 +114,7 @@ def process_librosa(audio, sr):
     chroma_cens = librosa.feature.chroma_cens(y=audio, sr=sr)
     chroma_cens_mean = np.mean(chroma_cens.T, axis=0)
 
-    chroma_vqt = librosa.feature.chroma_vqt(y=audio, sr=sr)
+    chroma_vqt = librosa.feature.chroma_vqt(y=audio, sr=sr, intervals="equal")
     chroma_vqt = np.mean(chroma_vqt.T, axis=0)
 
     melspectrogram = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
@@ -121,7 +135,7 @@ def process_librosa(audio, sr):
     spectral_contrast = librosa.feature.spectral_contrast(y=audio, sr=sr)
     spectral_contrast_mean = np.mean(spectral_contrast.T, axis=0)
 
-    spectral_flatness = librosa.feature.spectral_flatness(y=audio, sr=sr)
+    spectral_flatness = librosa.feature.spectral_flatness(y=audio)
     spectral_flatness_mean = np.mean(spectral_flatness.T, axis=0)
 
     poly_features = librosa.feature.poly_features(y=audio, sr=sr)
@@ -134,7 +148,7 @@ def process_librosa(audio, sr):
     zcr_mean = np.mean(zcr.T, axis=0)
 
     tempo = librosa.feature.tempo(y=audio, sr=sr)
-    tempo_mean = np.mean(tempo.T, axis=0)
+    tempo_mean = np.array([np.mean(tempo, axis=0)])
 
     tempogram = librosa.feature.tempogram(y=audio, sr=sr)
     tempogram_mean = np.mean(tempogram.T, axis=0)
@@ -160,7 +174,7 @@ def get_feature_labels():
     chroma_notes =  ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A',
             'A#', 'B']
     labels.extend([f'chroma_stft_{note}' for note in chroma_notes])
-    labels.extend([f'chroma_cqt_[note}' for note in chroma_notes])
+    labels.extend([f'chroma_cqt_{note}' for note in chroma_notes])
     labels.extend([f'chroma_cens_{note}' for note in chroma_notes])
     labels.extend([f'chroma_vqt_{note}' for note in chroma_notes])
 
@@ -182,5 +196,56 @@ def get_feature_labels():
 
     return labels
 
-if __name__ == '__main__':
-    ...
+'''
+Given librosa-loaded song stems, returns a list of features for each stem 
+contained in a list.
+
+stems: List[[stem, sr], [stem, sr], ...] 
+
+Returns: features: List[[librosa_features], [librosa_features], ...]
+'''
+def process_librosa_stems(stems):
+    features = []
+    for i in range(len(stems)):
+        features.append([])
+        stem = stems[i][0]
+        sr = stems[i][1]
+        stem_clips = create_clips(y=stem, sr=sr)
+        for clip in stem_clips:
+            librosa_features = process_librosa(clip)
+            features[i].append(librosa_features)
+    return features
+
+
+if __name__ == '__main__':    
+    # unit testing
+    # import time
+    # input_file = "/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/music_files/SM/3/Red Velvet/Feel My Rhythm.mp3"
+    # start_time = time.perf_counter()
+    # device = set_device()
+    # separate_track(input_file, device=device)
+    # base_filename = get_base_filename(input_file)
+    # stems = [librosa.load(f'stem_temp/{base_filename}{EXTENSION}') for EXTENSION in EXTENSIONS]
+    # features = process_librosa_stems(stems)
+    # for EXTENSION in EXTENSIONS:
+    #     os.remove(f'stem_temp/{base_filename}{EXTENSION}')
+    # end_time = time.perf_counter()
+    # elapsed_time = end_time - start_time
+    # print(f"The process took {elapsed_time:.4f} seconds.")
+
+    data_path = 'machine_data/pickled_songs_sherlock.pkl'
+    with open(data_path, 'rb') as f:
+        Songs = pickle.load(f)
+    data = [vars(song) for song in Songs if type(song) == Song]
+    num_none = len([song for song in Songs if song is None])
+    df = pd.DataFrame(data)
+    device = set_device()
+    for row in df.iterrows():
+        base_filename = get_base_filename(row.path)
+        stems = [librosa.load(f'stem_temp/{base_filename}{EXTENSION}' for EXTENSION in EXTENSIONS)]
+        features = process_librosa_stems(stems)
+        row.vocal_clip_embeddings = features[0]
+        row.instrumental_clip_embeddings = features[1]
+        for EXTENSION in EXTENSIONS:
+            os.remove(f'stem_temp/{base_filename}{EXTENSION}')
+        df.to_pickle('machine_data/clip_embedding_saved_df.pkl')
