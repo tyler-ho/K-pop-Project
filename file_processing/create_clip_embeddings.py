@@ -22,7 +22,7 @@ logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('logs/splitting_logs.log'),
+            logging.FileHandler('logs/create_clip_embeddings.log'),
             logging.StreamHandler()
         ]
     )
@@ -38,7 +38,6 @@ def get_base_filename(input_file):
     input_file = os.path.abspath(input_file)
     base_filename = os.path.splitext(os.path.basename(input_file))[0]
     return base_filename
-    
 
 def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name='htdemucs'):
     input_file = os.path.abspath(input_file)
@@ -90,7 +89,7 @@ def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name=
             audio_numpy = source_audio.cpu().numpy()
             audio_numpy = audio_numpy.T
             logging.info(f'Saving {source_name} to {output_path}.')
-            wavfile.write(output_path, model.samplerate, 
+            wavfile.write(output_path, model.samplerate,
                           audio_numpy.astype(np.float32))
     logging.info(f'Separation complete! Files saved to {output_dir}')
     return
@@ -197,10 +196,10 @@ def get_feature_labels():
     return labels
 
 '''
-Given librosa-loaded song stems, returns a list of features for each stem 
+Given librosa-loaded song stems, returns a list of features for each stem
 contained in a list.
 
-stems: List[[stem, sr], [stem, sr], ...] 
+stems: List[[stem, sr], [stem, sr], ...]
 
 Returns: features: List[[librosa_features], [librosa_features], ...]
 '''
@@ -217,7 +216,7 @@ def process_librosa_stems(stems):
     return features
 
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
     # unit testing
     # import time
     # input_file = "/Users/tylerho/Library/CloudStorage/GoogleDrive-tylerho@stanford.edu/.shortcut-targets-by-id/11Wd8pqP4BVeS--hw1VHHo4r5uRk9L1JP/K-pop Project 2024-5/K-pop Project/music_files/SM/3/Red Velvet/Feel My Rhythm.mp3"
@@ -241,11 +240,11 @@ if __name__ == '__main__':
     df = pd.DataFrame(data)
     device = set_device()
     for row in df.iterrows():
-        base_filename = get_base_filename(row.path)
+        base_filename = get_base_filename(row['path'])
         stems = [librosa.load(f'stem_temp/{base_filename}{EXTENSION}' for EXTENSION in EXTENSIONS)]
         features = process_librosa_stems(stems)
-        row.vocal_clip_embeddings = features[0]
-        row.instrumental_clip_embeddings = features[1]
+        row['vocal_clip_embeddings'] = features[0]
+        row['instrumental_clip_embeddings'] = features[1]
         for EXTENSION in EXTENSIONS:
             os.remove(f'stem_temp/{base_filename}{EXTENSION}')
         df.to_pickle('machine_data/clip_embedding_saved_df.pkl')
