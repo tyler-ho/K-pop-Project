@@ -239,12 +239,15 @@ if __name__ == '__main__':
     num_none = len([song for song in Songs if song is None])
     df = pd.DataFrame(data)
     device = set_device()
-    for row in df.iterrows():
-        base_filename = get_base_filename(row['path'])
+    for row in df.itertuples():
+        # skip songs we've already processed
+        if len(row.vocal_clip_embeddings) > 0:
+            continue
+        base_filename = get_base_filename(row.path)
         stems = [librosa.load(f'stem_temp/{base_filename}{EXTENSION}' for EXTENSION in EXTENSIONS)]
         features = process_librosa_stems(stems)
-        row['vocal_clip_embeddings'] = features[0]
-        row['instrumental_clip_embeddings'] = features[1]
+        row.vocal_clip_embeddings = features[0]
+        row.instrumental_clip_embeddings = features[1]
         for EXTENSION in EXTENSIONS:
             os.remove(f'stem_temp/{base_filename}{EXTENSION}')
         df.to_pickle('machine_data/clip_embedding_saved_df.pkl')
