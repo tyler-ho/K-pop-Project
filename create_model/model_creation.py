@@ -2,7 +2,11 @@
 XGBoost model for song classification.
 
 This module provides functions from training and evaluation an XGBoost
-classifer on song data, including visualization of results.
+classifer on song data, including visualization of results. 
+
+The primary functions of this file are:
+    create_train_eval_test_split
+    run_xgb
 '''
 
 import logging
@@ -30,29 +34,29 @@ from sklearn.metrics import (
 from sklearn.model_selection import (
         StratifiedKFold,
         train_test_split,
+        RandomizedSearchCV,
 )
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from xgboost import XGBClassifier, plot_importance
 
-from create_model.models import RandomizedSearchCVWithProgress
-from file_processing.create_clip_embeddings import get_feature_labels
-from file_processing.logger import create_logger
+from classes.logger import create_logger
+from classes.constants import (
+        BANNED_WORDS,
+        FEATURE_LABELS,
+        ICE,
+        N_JOBS,
+        RANDOM_STATE,
+        VCE,
+)
 
 # ===========================================================================
 # CONSTANTS
 # ===========================================================================
 
-# Embedding Types
-VCE = 'vocal_clip_embeddings'
-ICE = 'intrumental_clip_embeddings'
-
 # Model Hyperparameters RandomizedSearchCVWithProgress
-FEATURE_LABELS = get_feature_labels() # labels for librosa features
-RANDOM_STATE = 42 # random state; used for reproducibility
 # create a 75-15-15 train-eval-test set
 TEST_SIZE = 0.15 # proportion of data used for test set
 EVALUATION_SIZE = 15.0/85.0 # proportion of training data used for evaluation
-N_JOBS = 4 # number of threads to create; used for multi-threading
 PARAM_DISTRIBUTIONS = { # used for RandomSearchCV
   # Tree parameters
     'max_depth': randint(3, 10),
@@ -75,37 +79,28 @@ XGBOOST_TREE_PATH = 'figures/xgboost_tree.png'
 
 # Debug
 GET_REMOVED_SONGS = False # used to see list of songs removed by the keyword filter
-ADDITIONAL_BANNED_WORDS = ['mix', '~', 'kr', 'jp']
-
-
 
 
 # ===========================================================================
 # FUNCTIONS
 # ===========================================================================
 
-'''
-[Helper function for create_train_eval_test_split] Given an embedding column of
-a DataFrame, returns a list of all the clip embeddings in that column.
-'''
 def get_embeddings(df):
+    """ [Helper function for create_train_eval_test_split]
+    Given an embedding column of a DataFrame, returns a list of all the clip
+    embeddings in that column.
+    """
     return [np.abs(clip_embedding) for clip_embeddings in df for clip_embedding
             in clip_embeddings]
-'''
-[Helper function for create_train_eval_test_split] Given a list of song labels
-and an embeddong column of a DataFrame, returns a list of song labels to
-correspond to all of the clips.
-'''
+
 def make_labels(song_labels, df):
+    """ [Helper function for create_train_eval_test_split]
+    Given a list of song labels and an embeddong column of a DataFrame, returns
+    a list of song labels to correspond to all of the clips.
+    """
     return [song_labels[i] for i in range(len(song_labels)) for j in
             range(len(df.iloc[i]))]
 
-'''
-Given a DataFrame of Song object metadata, runs train_test_split on the rows of
-the df and creates a usable X_train, X_eval, X_test, y_train, y_eval, y_test
-sets for run_xgb. Will get the embeddings for X from embed_types and choice of
-y by label_name.
-'''
 def create_train_eval_test_split(
         input_df,
         label_df,
@@ -114,6 +109,12 @@ def create_train_eval_test_split(
         evaluation_size=EVALUATION_SIZE,
         random_state=RANDOM_STATE,
         ):
+    """
+    Given a DataFrame of Song object metadata, runs train_test_split on the rows of
+    the df and creates a usable X_train, X_eval, X_test, y_train, y_eval, y_test
+    sets for run_xgb. Will get the embeddings for X from embed_types and choice of
+    y by label_name.
+    """
     Song_train, Song_test, label_train, label_test = train_test_split(
             input_df, label_df, test_size=test_size, random_state=random_state
             )
@@ -158,10 +159,7 @@ def create_train_eval_test_split(
     y_test = make_labels(label_test, Song_test[VCE])
     return X_train, X_eval, X_test, y_train, y_eval, y_test, feature_labels
 
-'''
-[Helper function for run_xgb] Scales X input sets (normalizes) and labels y
-label sets (turns strings into ints).
-'''
+
 def scale_label_sets(
         scaler=StandardScaler(),
         X_train=[],
@@ -172,6 +170,10 @@ def scale_label_sets(
         y_eval=[],
         y_test=[],
         ):
+    """ [Helper function for run_xgb]
+    Scales X input sets (normalizes) and labels y label sets (turns strings
+    into ints).
+    """
     X_train_scaled = scaler.fit_transform(X_train)
     X_eval_scaled = scaler.transform(X_eval)
     X_test_scaled = scaler.transform(X_test)
@@ -181,9 +183,7 @@ def scale_label_sets(
 
     return (X_train_scaled, X_eval_scaled, X_test_scaled, y_train_encoded,
             y_eval_encoded, y_test_encoded)
-'''
-[Helper function for run_xgb] Runs 5 fold random search cross validation.
-'''
+
 def cross_validation_hyperparams(
         X_train,
         y_train,
@@ -195,8 +195,11 @@ def cross_validation_hyperparams(
         verbose=2,
         random_state=RANDOM_STATE,
         ):
+    """ [Helper function for run_xgb]
+    Runs 5 fold random search cross validation.
+    """
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-    random_search = RandomizedSearchCVWithProgress(
+    random_search = RandomizedSearchCV(
             model,
             params,
             n_iter=n_iter,
@@ -215,10 +218,6 @@ def cross_validation_hyperparams(
 
     return random_search
 
-'''
-[Helper function for run_xgb] Exports a confusion matrix, feature importance
-graph, and decision tree for XGBoost performance metrics.
-'''
 def plot_findings(
         y_test_encoded,
         y_pred,
@@ -228,6 +227,10 @@ def plot_findings(
         feature_importance_path=FEATURE_IMPORTANCE_PATH,
         tree_path=XGBOOST_TREE_PATH
         ):
+    """ [Helper function for run_xgb]
+    Exports a confusion matrix, feature importance graph, and decision tree for
+    XGBoost performance metrics.
+    """
     report = classification_report(y_test_encoded, y_pred,
                                    target_names=target_names)
     logging.info(f'\n{report}')
@@ -255,9 +258,6 @@ def plot_findings(
     fig.savefig(tree_path, dpi=600, bbox_inches='tight')
     plt.close()
 
-'''
-Trains a model on the XGBoost framework.
-'''
 def run_xgb(
         X_train=None,
         X_eval=None,
@@ -271,6 +271,7 @@ def run_xgb(
         feature_importance_path=FEATURE_IMPORTANCE_PATH,
         tree_path=XGBOOST_TREE_PATH
         ):
+    '''Trains a model on the XGBoost framework.'''
     logging.info('Starting to run XGBoost')
     scaler = StandardScaler()
     label_encoder = LabelEncoder()
@@ -287,17 +288,16 @@ def run_xgb(
              )
 
     logging.info('Creating the model.')
-    model = XGBClassifier(use_label_encoder=None, eval_metric='mlogloss',
-                          objective='multi:softprob', n_jobs=N_JOBS)
+    model = XGBClassifier(use_label_encoder=None,
+                          eval_metric='mlogloss',
+                          n_jobs=N_JOBS)
 
     random_search = cross_validation_hyperparams(X_train, y_train_encoded,
                                                  model)
     best_params = random_search.best_params_
-
     model = XGBClassifier(**best_params,
                           use_label_encoder=None,
                           eval_metric='mlogloss',
-                          objective='multi:softprob',
                           n_jobs=N_JOBS,
                           early_stopping_rounds=10)
 
@@ -334,7 +334,7 @@ if __name__ == '__main__':
         df = pickle.load(f)
 
     # adding more banned words
-    pattern = '|'.join(ADDITIONAL_BANNED_WORDS)
+    pattern = '|'.join(BANNED_WORDS)
 
     # Filter out rows where 'song_name' contains any banned word (case insensitive)
     df_filtered = df[~df['song_name'].str.contains(pattern, case=False, na=False)]
