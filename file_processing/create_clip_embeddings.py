@@ -1,33 +1,28 @@
 import os
 import pickle
-import demucs.pretrained
-import demucs.separate
-import librosa
 import logging
+
+import librosa
 import torch
-import torchaudio
 import numpy as np
 import pandas as pd
-import demucs.separate
+import torchaudio.functional as F
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
 from scipy.io import wavfile
-from song import Song
+
+from classes.logger import create_logger
+from classes.song import Song
 
 STEMS = ['vocals', 'no_vocals']
 EXTENSIONS = [f'_{STEM}.wav' for STEM in STEMS]
-
-
-logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('logs/create_clip_embeddings.log'),
-            logging.StreamHandler()
-        ]
-    )
+CHROMA_NOTES =  ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+FEATURE_SAMPLE_PATH = '/scratch/users/tylerho/kpop_project_data/music_downloads/JYP/1/g.o.d/Confession (지금 만나러 갈게).mp3'
 
 def set_device():
+    """ [Helper function for separate_track]
+    Sets the device for pytorch.
+    """
     if torch.cuda.is_available():
         return 'cuda'
     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
@@ -35,11 +30,13 @@ def set_device():
     return 'cpu'
 
 def get_base_filename(input_file):
+    '''Gets the base filename of a filepath.'''
     input_file = os.path.abspath(input_file)
     base_filename = os.path.splitext(os.path.basename(input_file))[0]
     return base_filename
 
-def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name='htdemucs'):
+def separate_track(input_file, device=set_device(), output_dir='stem_temp', model_name='htdemucs'):
+    '''Separates the given song file into its stems.'''
     input_file = os.path.abspath(input_file)
     if not os.path.exists(input_file):
         raise FileNotFoundError(f'Audio file not found: {input_file}.')
@@ -68,7 +65,6 @@ def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name=
 
     if sr != model.samplerate:
         logging.info(f'Resampling from {sr}Hz to {model.samplerate}Hz')
-        import torchaudio.functional as F
         wav = F.resample(wav, orig_freq=sr, new_freq=model.samplerate)
 
     wav = wav.unsqueeze(0)
@@ -95,6 +91,10 @@ def separate_track(input_file, device='cpu', output_dir='stem_temp', model_name=
     return
 
 def create_clips(y, sr=44100, clip_duration=30, overlap=0):
+    """ [Helper function for process_librosa_stems]
+    Creates clips with the given audio file.
+    Default is 30 second non-overlapping clips.
+    """
     clip_length = clip_duration * sr
     hop_length = int(clip_length * (1 - (float(overlap) / clip_duration)))
     end_spot = int(len(y) - clip_length + 1)
@@ -104,6 +104,9 @@ def create_clips(y, sr=44100, clip_duration=30, overlap=0):
     return clips
 
 def process_librosa(audio, sr=44100):
+    """ [Helper function for process_librosa_stems]
+    Extracts librosa features given an audio clip.
+    """
     chroma_stft = librosa.feature.chroma_stft(y=audio, sr=sr)
     chroma_stft_mean = np.mean(chroma_stft.T, axis=0)
 
@@ -114,7 +117,7 @@ def process_librosa(audio, sr=44100):
     chroma_cens_mean = np.mean(chroma_cens.T, axis=0)
 
     chroma_vqt = librosa.feature.chroma_vqt(y=audio, sr=sr, intervals="equal")
-    chroma_vqt = np.mean(chroma_vqt.T, axis=0)
+    chroma_vqt_mean = np.mean(chroma_vqt.T, axis=0)
 
     melspectrogram = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
     melspectrogram_mean = np.mean(melspectrogram.T, axis=0)
@@ -159,7 +162,7 @@ def process_librosa(audio, sr=44100):
     tempogram_ratio_mean = np.mean(tempogram_ratio.T, axis=0)
 
     features = np.concatenate((
-        chroma_stft_mean, chroma_cqt_mean, chroma_cens_mean, chroma_vqt,
+        chroma_stft_mean, chroma_cqt_mean, chroma_cens_mean, chroma_vqt_mean,
         melspectrogram_mean, mfccs_mean, rmse_mean, spectral_centroid_mean,
         spectral_bandwidth_mean, spectral_contrast_mean,
         spectral_flatness_mean, poly_features_mean, tonnetz_mean, zcr_mean,
@@ -169,41 +172,70 @@ def process_librosa(audio, sr=44100):
     return features
 
 def get_feature_labels():
+    '''Gets a list of all librosa feature names.'''
     labels = []
-    chroma_notes =  ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A',
-            'A#', 'B']
-    labels.extend([f'chroma_stft_{note}' for note in chroma_notes])
-    labels.extend([f'chroma_cqt_{note}' for note in chroma_notes])
-    labels.extend([f'chroma_cens_{note}' for note in chroma_notes])
-    labels.extend([f'chroma_vqt_{note}' for note in chroma_notes])
+    labels.extend([f'chroma_stft_{note}' for note in CHROMA_NOTES])
+    labels.extend([f'chroma_cqt_{note}' for note in CHROMA_NOTES])
+    labels.extend([f'chroma_cens_{note}' for note in CHROMA_NOTES])
+    labels.extend([f'chroma_vqt_{note}' for note in CHROMA_NOTES])
 
-    labels.extend([f'mel_band{i}' for i in range(128)])
-    labels.extend([f'mfcc_{i}' for i in range(1, 14)])
+    audio, sr = librosa.load(FEATURE_SAMPLE_PATH)
+    melspectrogram = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
+    melspectrogram_mean = np.mean(melspectrogram.T, axis=0)
+    labels.extend([f'mel_band{i}' for i in range(len(melspectrogram_mean))])
+
+    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
+    mfccs_mean = np.mean(mfccs.T, axis=0)
+    labels.extend([f'mfcc_{i}' for i in range(1, len(mfccs_mean) + 1)])
+
     labels.append('rms_energy')
     labels.append('spectral_centroid')
     labels.append('spectral_bandwidth')
-    labels.append([f'spectral_contrast_band_{i}' for i in range(1,8)])
-    labels.append('spectral_flatness')
-    labels.extend(['poly_feature_0', 'poly_feature_1'])
-    labels.extend([f'tonnetz_{i}' for i in range(1,7)])
-    labels.append('zero_crossing_rate')
 
+    spectral_contrast = librosa.feature.spectral_contrast(y=audio, sr=sr)
+    spectral_contrast_mean = np.mean(spectral_contrast.T, axis=0)
+
+    labels.extend([f'spectral_contrast_band_{i}' for i in
+                   range(1,len(spectral_contrast_mean) + 1)])
+
+    labels.append('spectral_flatness')
+
+    poly_features = librosa.feature.poly_features(y=audio, sr=sr)
+    poly_features_mean = np.mean(poly_features.T, axis=0)
+    labels.extend([f'poly_feature_{i}' for i in range(len(poly_features_mean))])
+
+    tonnetz = librosa.feature.tonnetz(y=audio, sr=sr)
+    tonnetz_mean = np.mean(tonnetz.T, axis=0)
+    labels.extend([f'tonnetz_{i}' for i in range(1,len(tonnetz_mean) + 1)])
+
+    labels.append('zero_crossing_rate')
     labels.append('tempo')
-    labels.extend([f'tempogram_{i}' for i in range(384)])
-    labels.extend([f'fourier_tempogram_{i}' for i in range(384)])
-    labels.extend([f'tempogram_ratio_{i}' for i in range(8)])
+
+    tempogram = librosa.feature.tempogram(y=audio, sr=sr)
+    tempogram_mean = np.mean(tempogram.T, axis=0)
+    labels.extend([f'tempogram_{i}' for i in range(len(tempogram_mean))])
+
+    fourier_tempogram = librosa.feature.fourier_tempogram(y=audio, sr=sr)
+    fourier_tempogram_mean = np.mean(fourier_tempogram.T, axis=0)
+    labels.extend([f'fourier_tempogram_{i}' for i in
+                   range(len(fourier_tempogram_mean))])
+
+    tempogram_ratio = librosa.feature.tempogram_ratio(y=audio, sr=sr)
+    tempogram_ratio_mean = np.mean(tempogram_ratio.T, axis=0)
+    labels.extend([f'tempogram_ratio_{i}' for i in
+                   range(len(tempogram_ratio_mean))])
 
     return labels
 
-'''
-Given librosa-loaded song stems, returns a list of features for each stem
-contained in a list.
-
-stems: List[[stem, sr], [stem, sr], ...]
-
-Returns: features: List[[librosa_features], [librosa_features], ...]
-'''
 def process_librosa_stems(stems):
+    """
+    Given librosa-loaded song stems, returns a list of features for each stem
+    contained in a list.
+
+    stems: List[(stem, sr), (stem, sr), ...]
+
+    Returns: features: List[[librosa_features], [librosa_features], ...]
+    """
     features = []
     for i in range(len(stems)):
         features.append([])
@@ -232,6 +264,8 @@ if __name__ == '__main__':
     # elapsed_time = end_time - start_time
     # print(f"The process took {elapsed_time:.4f} seconds.")
 
+    create_logger('logs/create_clip_embeddings.log')
+
     data_path = 'machine_data/pickled_songs_sherlock.pkl'
     with open(data_path, 'rb') as f:
         Songs = pickle.load(f)
@@ -251,3 +285,5 @@ if __name__ == '__main__':
         for EXTENSION in EXTENSIONS:
             os.remove(f'stem_temp/{base_filename}{EXTENSION}')
         df.to_pickle('machine_data/clip_embedding_saved_df.pkl')
+
+    logging.info(f'{get_feature_labels()}')

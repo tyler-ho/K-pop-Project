@@ -1,12 +1,15 @@
-import pickle
-import os
 import logging
+import os
+import pickle
+
 import dotenv
 import musicbrainzngs
 from musicbrainzngs import get_recording_by_id
 import numpy as np
 import pandas as pd
-from song import Song
+
+from classes.song import Song
+from classes.logger import create_logger
 
 dotenv.load_dotenv()
 
@@ -16,15 +19,6 @@ PRODUCER_METADATA = {'arranger', 'instrument arranger', 'vocal arranger',
                      'producer', 'engineer', 'audio', 'mastering', 'sound',
                      'mix', 'recording', 'programming', 'editor', 'balance',
                      'sound_effect'}
-
-logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('logs/get_producer_data.log'),
-            logging.StreamHandler()
-        ]
-    )
 
 def load_musicbrainz(user=USER, password=PASSWORD, limit_or_interval=1.0,
                      new_requests=3, fmt='xml'):
@@ -72,6 +66,7 @@ def get_producer_data(recording_id, artist, includes=['artist-rels'],
     return out
 
 if __name__ == '__main__':
+    create_logger('logs/get_producer_data.log')
     data_filepath = 'machine_data/recording_ids_list_with_nans.pkl' 
     df_filepath = 'machine_data/clip_embedding_saved_df.pkl'
     producer_list_out_path = 'machine_data/producer_list.pkl'

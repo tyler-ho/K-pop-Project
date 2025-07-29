@@ -1,57 +1,35 @@
-import yt_dlp
-import os
+"""
+This file scrapes all the songs from a YouTube Music channel.
+
+Main function:
+    download_from_youtube_music
+"""
 import logging
-import pandas as pd
+import os
 from typing import List
-from urllib.parse import urlparse, parse_qs
 
-# need logging to see the progress 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s — %(levelname)s — %(message)s",
-    handlers=[
-        logging.FileHandler("/home/users/tylerho/kpop_project/K-pop-Project/logs/scrape_without_dupes.log"),
-        logging.StreamHandler()
-    ]
-)
+import yt_dlp
+import pandas as pd
+from time import sleep
+from urllib.parse import urlparse
 
-def is_youtube_music_url(url):
-    """Check if the URL is from YouTube Music"""
-    parsed_url = urlparse(url)
-    return parsed_url.netloc in ['music.youtube.com', 'www.music.youtube.com']
+from classes.constants import BANNED_WORDS
+from classes.logger import create_logger
 
 
-COOKIE_FILE = 'cookies.txt'
-def get_playlist_from_artist(artist_url):
-    """Extract playlist URLs from an artist page"""
-    ydl_opts = {
-        'extract_flat': True,
-        'skip_download': True,
-        'quiet': True,
-        'cookiefile': COOKIE_FILE
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(artist_url, download=False)
-        playlists = []
-        
-        if 'entries' in info:
-            for entry in info['entries']:
-                if 'url' in entry:
-                    playlists.append(entry['url'])
-        
-        return playlists
-
-BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'karaoke', 'version']  # remove any concert recordings, instrumentals, copied songs in other languages, and remixes
 def has_banned_words(title: str, banned_words: List[str]=BANNED_WORDS):
+    """ [Helper function for download_track]
+    Ignores songs with a banned word in the title.
+    """
     for banned_word in banned_words:
         if banned_word in title.lower():
             return True, banned_word
     return False, None
 
-
 def download_track(track_url, output_dir="downloads"):
-    """Download a single track"""
+    """ [Helper function for download_from_youtube_music]
+    Download a single track.
+    """
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -65,7 +43,6 @@ def download_track(track_url, output_dir="downloads"):
         'keepvideo': False,
         'download_archive': 'logs/downloaded_videos.txt',
         'no_overwrites': True,
-        'cookiefile' : COOKIE_FILE
     }
     
     try:
@@ -82,8 +59,36 @@ def download_track(track_url, output_dir="downloads"):
         logging.warning(f"Error downloading {track_url}: {e}")
         return False
 
+def is_youtube_music_url(url):
+    """ [Helper function for download_from_youtube_music]
+    Check if the URL is from YouTube Music.
+    """
+    parsed_url = urlparse(url)
+    return parsed_url.netloc in ['music.youtube.com', 'www.music.youtube.com']
+
+def get_playlist_from_artist(artist_url):
+    """ [Helper function for download_from_youtube_music]
+    Extract playlist URLs from an artist page.
+    """
+    ydl_opts = {
+        'extract_flat': True,
+        'skip_download': True,
+        'quiet': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(artist_url, download=False)
+        playlists = []
+        if 'entries' in info:
+            for entry in info['entries']:
+                if 'url' in entry:
+                    playlists.append(entry['url'])
+        return playlists
+
 def download_from_youtube_music(url, output_dir="downloads"):
-    """Main function to download from YouTube Music URLs"""
+    """
+    Given a url to a YouTube Music channel, downloads all songs to output_dir.
+    This function will ignore songs whose titles include a word in BANNED_WORDS.
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
@@ -108,12 +113,11 @@ def download_from_youtube_music(url, output_dir="downloads"):
 
 # Example usage
 if __name__ == "__main__":
-    from time import sleep
-    # BANNED_WORDS = ['live', 'tour', 'inst', 'korean', 'chinese', 'japanese', 'thai', 'remix', 'karaoke', 'version'] 
+    create_logger('logs/scrape_without_dupes.log')
     data_path = 'file_processing/DownloadViaChannel.xlsx'
     df = pd.read_excel(data_path)
     for row in df.itertuples():
         sleep(1)
-        download_from_youtube_music(row.group_link, "music_downloads/" + row.company + '/' + str(row.generation) + '/' + row.group)
-
-
+        download_from_youtube_music(row.group_link, "music_downloads/" +
+                                    row.company + '/' + str(row.generation) +
+                                    '/' + row.group)
